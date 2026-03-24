@@ -178,8 +178,19 @@ public class HttpExchangeRegistrar implements ImportBeanDefinitionRegistrar {
                                          String[] standalonePackages,
                                          String httpClientClassName,
                                          BeanDefinitionRegistry registry) {
+        // 如果没有配置 standalonePackages 且没有 remote 需要覆盖，说明这是从子模块应用触发的注册
+        // 跳过注册，等待主应用（standalone-starter）来注册
+        if (standalonePackages.length == 0 && standaloneCoveredRemotes.isEmpty()) {
+            return;
+        }
+
         for (Class<?> clazz : remoteInterfaces) {
             String beanName = StringUtils.uncapitalize(clazz.getSimpleName());
+
+            // 如果 Bean 已经存在，跳过注册（避免重复注册导致冲突）
+            if (registry.containsBeanDefinition(beanName)) {
+                continue;
+            }
 
             if (standaloneCoveredRemotes.contains(clazz)) {
                 registerStandaloneBean(clazz, standalonePackages, registry, beanName);
@@ -209,11 +220,11 @@ public class HttpExchangeRegistrar implements ImportBeanDefinitionRegistrar {
      */
     private void registerRemoteProxyBean(Class<?> clazz, String httpClientClassName,
                                          BeanDefinitionRegistry registry, String beanName) {
-        BeanDefinitionBuilder builder = BeanDefinitionBuilder.genericBeanDefinition(clazz);
-        GenericBeanDefinition definition = (GenericBeanDefinition) builder.getRawBeanDefinition();
+        BeanDefinitionBuilder builder = BeanDefinitionBuilder.genericBeanDefinition(HttpBeanFactory.class);
+        builder.addConstructorArgValue(clazz);
+        builder.addConstructorArgValue(httpClientClassName);
 
-        definition.getConstructorArgumentValues().addGenericArgumentValue(clazz);
-        definition.setInstanceSupplier(() -> new HttpBeanFactory<>(clazz, httpClientClassName).getObject());
+        GenericBeanDefinition definition = (GenericBeanDefinition) builder.getRawBeanDefinition();
         definition.setAutowireMode(GenericBeanDefinition.AUTOWIRE_BY_TYPE);
 
         registry.registerBeanDefinition(beanName, definition);
